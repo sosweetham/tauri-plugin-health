@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-query-aggregated"
+description = "Enables the query_aggregated command without any pre-configured scope."
+commands.allow = ["query_aggregated"]
+
+[[permission]]
+identifier = "deny-query-aggregated"
+description = "Denies the query_aggregated command without any pre-configured scope."
+commands.deny = ["query_aggregated"]

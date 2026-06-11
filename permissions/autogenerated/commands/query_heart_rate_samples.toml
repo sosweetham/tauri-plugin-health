@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-query-heart-rate-samples"
+description = "Enables the query_heart_rate_samples command without any pre-configured scope."
+commands.allow = ["query_heart_rate_samples"]
+
+[[permission]]
+identifier = "deny-query-heart-rate-samples"
+description = "Denies the query_heart_rate_samples command without any pre-configured scope."
+commands.deny = ["query_heart_rate_samples"]

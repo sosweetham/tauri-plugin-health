@@ -1,0 +1,27 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Default permissions for the health plugin.
+
+#### Granted Permissions
+
+- Availability + OS-level permission management (`is_available`,
+  `request_permissions`, `check_permissions`, `open_settings`).
+- Read-only health queries (`query_aggregated`, `query_sleep`,
+  `query_workouts`, `query_heart_rate_samples`).
+
+Note: these are Tauri IPC permissions. Actual access to health data is
+additionally gated by the OS (HealthKit authorization on iOS, Health
+Connect permission grants on Android).
+"""
+permissions = [
+  "allow-is-available",
+  "allow-request-permissions",
+  "allow-check-permissions",
+  "allow-query-aggregated",
+  "allow-query-sleep",
+  "allow-query-workouts",
+  "allow-query-heart-rate-samples",
+  "allow-open-settings",
+]

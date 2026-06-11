@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Consumer apps override these by redefining the same names — app
+         resources win over library resources in the merge. -->
+    <string name="tauri_health_rationale_title">Health data access</string>
+    <string name="tauri_health_rationale_text">This app reads health data (such as steps, sleep, heart rate and workouts) on your device to show your activity. Data is read only with your permission, is never written, and you can revoke access at any time in Health Connect settings.</string>
+    <string name="tauri_health_rationale_policy_button">Open privacy policy</string>
+</resources>
