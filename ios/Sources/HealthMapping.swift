@@ -9,28 +9,45 @@
 
 import HealthKit
 
+// iOS-13-compatible type lookups: the `HKQuantityType(_:)` /
+// `HKCategoryType(_:)` convenience initializers are iOS 15+, but consumers
+// build this package at their app's deployment target (Tauri defaults to
+// 13.0). Force-unwrap is safe — every identifier passed is a compile-time
+// constant HealthKit knows.
+func quantityType(_ id: HKQuantityTypeIdentifier) -> HKQuantityType {
+    HKObjectType.quantityType(forIdentifier: id)!
+}
+func categoryType(_ id: HKCategoryTypeIdentifier) -> HKCategoryType {
+    HKObjectType.categoryType(forIdentifier: id)!
+}
+
 enum HealthMetric: String, CaseIterable {
     case steps
     case distance
     case activeCalories
     case totalCalories
     case heartRate
+    case restingHeartRate
+    case heartRateVariability
     case workouts
     case sleep
 
     /// HK types whose read permission this metric needs.
     var objectTypes: [HKObjectType] {
         switch self {
-        case .steps: return [HKQuantityType(.stepCount)]
-        case .distance: return [HKQuantityType(.distanceWalkingRunning)]
-        case .activeCalories: return [HKQuantityType(.activeEnergyBurned)]
+        case .steps: return [quantityType(.stepCount)]
+        case .distance: return [quantityType(.distanceWalkingRunning)]
+        case .activeCalories: return [quantityType(.activeEnergyBurned)]
         // HealthKit has no single "total calories" type — totals are
         // active + basal energy summed per bucket.
         case .totalCalories:
-            return [HKQuantityType(.activeEnergyBurned), HKQuantityType(.basalEnergyBurned)]
-        case .heartRate: return [HKQuantityType(.heartRate)]
+            return [quantityType(.activeEnergyBurned), quantityType(.basalEnergyBurned)]
+        case .heartRate: return [quantityType(.heartRate)]
+        case .restingHeartRate: return [quantityType(.restingHeartRate)]
+        // SDNN on iOS (Android reads RMSSD) — baseline-relative only.
+        case .heartRateVariability: return [quantityType(.heartRateVariabilitySDNN)]
         case .workouts: return [HKObjectType.workoutType()]
-        case .sleep: return [HKCategoryType(.sleepAnalysis)]
+        case .sleep: return [categoryType(.sleepAnalysis)]
         }
     }
 
@@ -40,8 +57,18 @@ enum HealthMetric: String, CaseIterable {
         case .steps: return (.count(), "count")
         case .distance: return (.meter(), "m")
         case .activeCalories, .totalCalories: return (.kilocalorie(), "kcal")
-        case .heartRate: return (HKUnit.count().unitDivided(by: .minute()), "bpm")
+        case .heartRate, .restingHeartRate:
+            return (HKUnit.count().unitDivided(by: .minute()), "bpm")
+        case .heartRateVariability: return (HKUnit.secondUnit(with: .milli), "ms")
         case .workouts, .sleep: return (.count(), "count")  // unused
+        }
+    }
+
+    /// Discrete quantities aggregate by avg/min/max; the rest sum.
+    var isDiscrete: Bool {
+        switch self {
+        case .heartRate, .restingHeartRate, .heartRateVariability: return true
+        default: return false
         }
     }
 }

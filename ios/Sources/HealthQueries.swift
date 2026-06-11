@@ -44,7 +44,7 @@ final class HealthQueries {
         if hourly { interval.hour = 1 } else { interval.day = 1 }
 
         let options: HKStatisticsOptions =
-            metric == .heartRate ? [.discreteAverage, .discreteMin, .discreteMax] : .cumulativeSum
+            metric.isDiscrete ? [.discreteAverage, .discreteMin, .discreteMax] : .cumulativeSum
         let predicate = HKQuery.predicateForSamples(
             withStart: start, end: end, options: .strictStartDate)
 
@@ -63,7 +63,7 @@ final class HealthQueries {
             }
             var buckets: [BucketResult] = []
             collection?.enumerateStatistics(from: start, to: end) { stats, _ in
-                if metric == .heartRate {
+                if metric.isDiscrete {
                     guard let avg = stats.averageQuantity() else { return }
                     buckets.append(
                         BucketResult(
@@ -100,7 +100,7 @@ final class HealthQueries {
 
             group.enter()
             statistics(
-                type: HKQuantityType(.activeEnergyBurned), metric: metric,
+                type: quantityType(.activeEnergyBurned), metric: metric,
                 start: start, end: end, hourly: hourly
             ) { result in
                 switch result {
@@ -111,7 +111,7 @@ final class HealthQueries {
             }
             group.enter()
             statistics(
-                type: HKQuantityType(.basalEnergyBurned), metric: metric,
+                type: quantityType(.basalEnergyBurned), metric: metric,
                 start: start, end: end, hourly: hourly
             ) { result in
                 switch result {
@@ -173,7 +173,7 @@ final class HealthQueries {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let query = HKSampleQuery(
-            sampleType: HKCategoryType(.sleepAnalysis),
+            sampleType: categoryType(.sleepAnalysis),
             predicate: predicate,
             limit: HKObjectQueryNoLimit,
             sortDescriptors: [sort]
@@ -256,7 +256,7 @@ final class HealthQueries {
             let results = workouts.map { workout -> WorkoutResult in
                 var calories: Double?
                 if #available(iOS 16.0, *) {
-                    calories = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?
+                    calories = workout.statistics(for: quantityType(.activeEnergyBurned))?
                         .sumQuantity()?.doubleValue(for: .kilocalorie())
                 } else {
                     calories = workout.totalEnergyBurned?.doubleValue(for: .kilocalorie())
@@ -294,7 +294,7 @@ final class HealthQueries {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
         let bpmUnit = HKUnit.count().unitDivided(by: .minute())
         let query = HKSampleQuery(
-            sampleType: HKQuantityType(.heartRate),
+            sampleType: quantityType(.heartRate),
             predicate: predicate,
             limit: limit,
             sortDescriptors: [sort]

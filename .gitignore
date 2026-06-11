@@ -9,3 +9,4 @@ dist-js/
 /android/.gradle
 /android/.tauri
 .DS_Store
+.turbo/

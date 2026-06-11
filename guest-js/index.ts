@@ -1,12 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
 
-/** A readable health metric. */
+/**
+ * A readable health metric.
+ *
+ * `heartRateVariability` is method-specific per platform — SDNN on iOS,
+ * RMSSD on Android (both in ms). The two are NOT comparable; only compare
+ * HRV against the same user's own baseline on the same device.
+ */
 export type Metric =
   | 'steps'
   | 'distance'
   | 'activeCalories'
   | 'totalCalories'
   | 'heartRate'
+  | 'restingHeartRate'
+  | 'heartRateVariability'
   | 'workouts'
   | 'sleep';
 
@@ -54,10 +62,14 @@ export interface AggregatedBucket {
   /** Epoch ms, device-local bucket bounds. */
   start: number;
   end: number;
-  /** steps: count; distance: meters; calories: kcal; heartRate: avg bpm. */
+  /**
+   * steps: count; distance: meters; calories: kcal; heartRate /
+   * restingHeartRate: avg bpm; heartRateVariability: avg ms (SDNN on iOS,
+   * RMSSD on Android — baseline-relative comparisons only).
+   */
   value: number;
-  unit: 'count' | 'm' | 'kcal' | 'bpm';
-  /** heartRate only. */
+  unit: 'count' | 'm' | 'kcal' | 'bpm' | 'ms';
+  /** Heart metrics only (heartRate / restingHeartRate / heartRateVariability). */
   min?: number;
   max?: number;
 }
@@ -132,9 +144,14 @@ export async function checkPermissions(): Promise<PermissionsResponse> {
 }
 
 /**
- * Bucketed aggregates for steps / distance / calories / heart rate.
- * `start` inclusive, `end` exclusive, epoch ms. Buckets align to the
- * device-local calendar (`day`) or fixed hours (`hour`).
+ * Bucketed aggregates for steps / distance / calories / heart rate /
+ * resting heart rate / heart-rate variability. `start` inclusive, `end`
+ * exclusive, epoch ms. Buckets align to the device-local calendar (`day`)
+ * or fixed hours (`hour`).
+ *
+ * Note: Health Connect has no native HRV aggregate, so on Android the
+ * plugin reads raw RMSSD records and buckets them itself (same bucket
+ * semantics).
  */
 export async function queryAggregated(options: {
   metric: AggregatableMetric;

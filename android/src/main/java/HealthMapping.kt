@@ -10,7 +10,9 @@ import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
@@ -24,6 +26,9 @@ object HealthMapping {
         "activeCalories" to ActiveCaloriesBurnedRecord::class,
         "totalCalories" to TotalCaloriesBurnedRecord::class,
         "heartRate" to HeartRateRecord::class,
+        "restingHeartRate" to RestingHeartRateRecord::class,
+        // RMSSD on Android (iOS reads SDNN) — baseline-relative only.
+        "heartRateVariability" to HeartRateVariabilityRmssdRecord::class,
         "workouts" to ExerciseSessionRecord::class,
         "sleep" to SleepSessionRecord::class,
     )
@@ -36,7 +41,8 @@ object HealthMapping {
         "steps" -> "count"
         "distance" -> "m"
         "activeCalories", "totalCalories" -> "kcal"
-        "heartRate" -> "bpm"
+        "heartRate", "restingHeartRate" -> "bpm"
+        "heartRateVariability" -> "ms"
         else -> "count"
     }
 

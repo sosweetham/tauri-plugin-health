@@ -13,6 +13,8 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
@@ -168,6 +170,15 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                 val buckets = JSArray()
                 val zone = ZoneId.systemDefault()
 
+                // Health Connect has no HRV aggregate — read the raw RMSSD
+                // records and bucket them here with the same semantics.
+                if (args.metric == "heartRateVariability") {
+                    invoke.resolve(JSObject().apply {
+                        put("buckets", aggregateHrvManually(healthClient, args, zone))
+                    })
+                    return@launch
+                }
+
                 if (args.bucket == "day") {
                     val timeRange = TimeRangeFilter.between(
                         LocalDateTime.ofInstant(Instant.ofEpochMilli(args.start), zone),
@@ -222,7 +233,94 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
         "activeCalories" -> setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
         "totalCalories" -> setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
         "heartRate" -> setOf(HeartRateRecord.BPM_AVG, HeartRateRecord.BPM_MIN, HeartRateRecord.BPM_MAX)
+        "restingHeartRate" -> setOf(
+            RestingHeartRateRecord.BPM_AVG,
+            RestingHeartRateRecord.BPM_MIN,
+            RestingHeartRateRecord.BPM_MAX,
+        )
         else -> throw IllegalArgumentException("unknown metric: $metric")
+    }
+
+    /**
+     * Manual bucketing for HRV (no Health Connect aggregate exists): mean /
+     * min / max of `heartRateVariabilityMillis` per bucket, mirroring the
+     * aggregate semantics — `day` slices on the device-local calendar,
+     * `hour` slices in fixed steps from `args.start`. Empty buckets are
+     * skipped, like the other discrete metrics.
+     */
+    private suspend fun aggregateHrvManually(
+        healthClient: HealthConnectClient,
+        args: QueryAggregatedArgs,
+        zone: ZoneId,
+    ): JSArray {
+        val values = mutableListOf<Pair<Long, Double>>() // (epoch ms, ms)
+        var pageToken: String? = null
+        do {
+            val response = healthClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateVariabilityRmssdRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(
+                        Instant.ofEpochMilli(args.start),
+                        Instant.ofEpochMilli(args.end),
+                    ),
+                    pageToken = pageToken,
+                ),
+            )
+            for (record in response.records) {
+                values.add(record.time.toEpochMilli() to record.heartRateVariabilityMillis)
+            }
+            pageToken = response.pageToken
+        } while (pageToken != null)
+        values.sortBy { it.first }
+
+        // Bucket bounds as [startMs, endMs) pairs.
+        val bounds = mutableListOf<Pair<Long, Long>>()
+        if (args.bucket == "day") {
+            var cursor = LocalDateTime.ofInstant(Instant.ofEpochMilli(args.start), zone)
+                .toLocalDate().atStartOfDay(zone)
+            val endInstant = Instant.ofEpochMilli(args.end)
+            while (cursor.toInstant() < endInstant) {
+                val next = cursor.plusDays(1)
+                bounds.add(cursor.toInstant().toEpochMilli() to next.toInstant().toEpochMilli())
+                cursor = next
+            }
+        } else {
+            var cursor = args.start
+            while (cursor < args.end) {
+                val next = cursor + Duration.ofHours(1).toMillis()
+                bounds.add(cursor to next)
+                cursor = next
+            }
+        }
+
+        val buckets = JSArray()
+        var i = 0
+        for ((startMs, endMs) in bounds) {
+            var sum = 0.0
+            var count = 0
+            var min = Double.POSITIVE_INFINITY
+            var max = Double.NEGATIVE_INFINITY
+            while (i < values.size && values[i].first < endMs) {
+                val (ts, v) = values[i]
+                if (ts >= startMs) {
+                    sum += v
+                    count++
+                    if (v < min) min = v
+                    if (v > max) max = v
+                }
+                i++
+            }
+            if (count == 0) continue
+            buckets.put(JSObject().apply {
+                put("start", startMs)
+                put("end", endMs)
+                put("value", sum / count)
+                put("unit", "ms")
+                put("min", min)
+                put("max", max)
+            })
+        }
+        return buckets
     }
 
     /** Builds the value part of a bucket; null when the bucket is empty. */
@@ -256,6 +354,12 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                 json.put("value", avg.toDouble())
                 result[HeartRateRecord.BPM_MIN]?.let { json.put("min", it.toDouble()) }
                 result[HeartRateRecord.BPM_MAX]?.let { json.put("max", it.toDouble()) }
+            }
+            "restingHeartRate" -> {
+                val avg = result[RestingHeartRateRecord.BPM_AVG] ?: return null
+                json.put("value", avg.toDouble())
+                result[RestingHeartRateRecord.BPM_MIN]?.let { json.put("min", it.toDouble()) }
+                result[RestingHeartRateRecord.BPM_MAX]?.let { json.put("max", it.toDouble()) }
             }
             else -> return null
         }
