@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 /// A readable health metric. Serialized camelCase to match the TS union.
+///
+/// `HeartRateVariability` is method-specific per platform — SDNN on iOS,
+/// RMSSD on Android (both ms). Only baseline-relative comparisons on the
+/// same device are valid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Metric {
@@ -9,6 +13,8 @@ pub enum Metric {
     ActiveCalories,
     TotalCalories,
     HeartRate,
+    RestingHeartRate,
+    HeartRateVariability,
     Workouts,
     Sleep,
 }
@@ -87,11 +93,12 @@ pub struct QueryAggregatedOptions {
 pub struct AggregatedBucket {
     pub start: i64,
     pub end: i64,
-    /// steps: count; distance: meters; calories: kcal; heartRate: avg bpm.
+    /// steps: count; distance: meters; calories: kcal; heartRate /
+    /// restingHeartRate: avg bpm; heartRateVariability: avg ms.
     pub value: f64,
-    /// "count" | "m" | "kcal" | "bpm"
+    /// "count" | "m" | "kcal" | "bpm" | "ms"
     pub unit: String,
-    /// heartRate only.
+    /// Heart metrics only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

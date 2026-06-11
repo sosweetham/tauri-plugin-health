@@ -38,7 +38,8 @@
   "scripts": {
     "build": "rollup -c",
     "check-types": "tsc --noEmit",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "prepare": "pnpm build"
   },
   "dependencies": {
     "@tauri-apps/api": ">=2.0.0"

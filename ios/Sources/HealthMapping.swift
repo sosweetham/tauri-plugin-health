@@ -15,6 +15,8 @@ enum HealthMetric: String, CaseIterable {
     case activeCalories
     case totalCalories
     case heartRate
+    case restingHeartRate
+    case heartRateVariability
     case workouts
     case sleep
 
@@ -29,6 +31,9 @@ enum HealthMetric: String, CaseIterable {
         case .totalCalories:
             return [HKQuantityType(.activeEnergyBurned), HKQuantityType(.basalEnergyBurned)]
         case .heartRate: return [HKQuantityType(.heartRate)]
+        case .restingHeartRate: return [HKQuantityType(.restingHeartRate)]
+        // SDNN on iOS (Android reads RMSSD) — baseline-relative only.
+        case .heartRateVariability: return [HKQuantityType(.heartRateVariabilitySDNN)]
         case .workouts: return [HKObjectType.workoutType()]
         case .sleep: return [HKCategoryType(.sleepAnalysis)]
         }
@@ -40,8 +45,18 @@ enum HealthMetric: String, CaseIterable {
         case .steps: return (.count(), "count")
         case .distance: return (.meter(), "m")
         case .activeCalories, .totalCalories: return (.kilocalorie(), "kcal")
-        case .heartRate: return (HKUnit.count().unitDivided(by: .minute()), "bpm")
+        case .heartRate, .restingHeartRate:
+            return (HKUnit.count().unitDivided(by: .minute()), "bpm")
+        case .heartRateVariability: return (HKUnit.secondUnit(with: .milli), "ms")
         case .workouts, .sleep: return (.count(), "count")  // unused
+        }
+    }
+
+    /// Discrete quantities aggregate by avg/min/max; the rest sum.
+    var isDiscrete: Bool {
+        switch self {
+        case .heartRate, .restingHeartRate, .heartRateVariability: return true
+        default: return false
         }
     }
 }

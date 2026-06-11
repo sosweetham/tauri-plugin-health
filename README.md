@@ -11,7 +11,17 @@ Read-only health & fitness data for [Tauri 2](https://tauri.app) apps:
   `{ available: false, platform: 'unsupported' }`, queries reject.
 
 v1 metrics (read-only): **steps, distance, active/total calories, heart
-rate, workouts, sleep with stages**.
+rate, resting heart rate, heart-rate variability, workouts, sleep with
+stages**.
+
+> **HRV platform contract.** iOS reads **SDNN**
+> (`heartRateVariabilitySDNN`), Android reads **RMSSD**
+> (`HeartRateVariabilityRmssdRecord`) — both in `ms` but **not comparable
+> across platforms or methods**. Treat HRV as baseline-relative only:
+> compare a value against the same user's rolling baseline on the same
+> device. Health Connect has no native HRV aggregate, so on Android
+> `queryAggregated` reads the raw records and buckets them itself (same
+> day/hour semantics).
 
 ## Install
 
@@ -121,7 +131,8 @@ for (const session of sessions) {
 ```
 
 All timestamps are **epoch milliseconds**. Units: steps `count`, distance
-`m`, calories `kcal`, heart rate `bpm`.
+`m`, calories `kcal`, heart rate / resting heart rate `bpm`, heart-rate
+variability `ms`.
 
 ## Platform contract — read these
 
@@ -144,6 +155,10 @@ All timestamps are **epoch milliseconds**. Units: steps `count`, distance
   `'other'` fallback); the platform-native enum value is always present as
   `rawActivityType`.
 - Heart-rate aggregates are integer bpm on Android, fractional on iOS.
+- **HRV is method-specific**: SDNN on iOS vs RMSSD on Android (see the
+  banner up top) — baseline-relative comparisons only, never
+  cross-platform. Android HRV aggregates are computed by the plugin from
+  raw records (Health Connect has no HRV aggregate).
 
 ## Example app
 

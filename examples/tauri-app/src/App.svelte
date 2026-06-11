@@ -16,6 +16,8 @@
     'activeCalories',
     'totalCalories',
     'heartRate',
+    'restingHeartRate',
+    'heartRateVariability',
     'workouts',
     'sleep',
   ];
@@ -113,6 +115,8 @@
     <MetricCard title="Active calories" metric="activeCalories" {range} />
     <MetricCard title="Total calories" metric="totalCalories" {range} />
     <MetricCard title="Heart rate" metric="heartRate" {range} />
+    <MetricCard title="Resting heart rate" metric="restingHeartRate" {range} />
+    <MetricCard title="HRV" metric="heartRateVariability" {range} />
     <SleepTimeline {range} />
     <WorkoutsList {range} />
   {/if}

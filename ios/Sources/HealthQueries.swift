@@ -44,7 +44,7 @@ final class HealthQueries {
         if hourly { interval.hour = 1 } else { interval.day = 1 }
 
         let options: HKStatisticsOptions =
-            metric == .heartRate ? [.discreteAverage, .discreteMin, .discreteMax] : .cumulativeSum
+            metric.isDiscrete ? [.discreteAverage, .discreteMin, .discreteMax] : .cumulativeSum
         let predicate = HKQuery.predicateForSamples(
             withStart: start, end: end, options: .strictStartDate)
 
@@ -63,7 +63,7 @@ final class HealthQueries {
             }
             var buckets: [BucketResult] = []
             collection?.enumerateStatistics(from: start, to: end) { stats, _ in
-                if metric == .heartRate {
+                if metric.isDiscrete {
                     guard let avg = stats.averageQuantity() else { return }
                     buckets.append(
                         BucketResult(
