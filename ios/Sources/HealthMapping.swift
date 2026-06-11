@@ -9,6 +9,18 @@
 
 import HealthKit
 
+// iOS-13-compatible type lookups: the `HKQuantityType(_:)` /
+// `HKCategoryType(_:)` convenience initializers are iOS 15+, but consumers
+// build this package at their app's deployment target (Tauri defaults to
+// 13.0). Force-unwrap is safe — every identifier passed is a compile-time
+// constant HealthKit knows.
+func quantityType(_ id: HKQuantityTypeIdentifier) -> HKQuantityType {
+    HKObjectType.quantityType(forIdentifier: id)!
+}
+func categoryType(_ id: HKCategoryTypeIdentifier) -> HKCategoryType {
+    HKObjectType.categoryType(forIdentifier: id)!
+}
+
 enum HealthMetric: String, CaseIterable {
     case steps
     case distance
@@ -23,19 +35,19 @@ enum HealthMetric: String, CaseIterable {
     /// HK types whose read permission this metric needs.
     var objectTypes: [HKObjectType] {
         switch self {
-        case .steps: return [HKQuantityType(.stepCount)]
-        case .distance: return [HKQuantityType(.distanceWalkingRunning)]
-        case .activeCalories: return [HKQuantityType(.activeEnergyBurned)]
+        case .steps: return [quantityType(.stepCount)]
+        case .distance: return [quantityType(.distanceWalkingRunning)]
+        case .activeCalories: return [quantityType(.activeEnergyBurned)]
         // HealthKit has no single "total calories" type — totals are
         // active + basal energy summed per bucket.
         case .totalCalories:
-            return [HKQuantityType(.activeEnergyBurned), HKQuantityType(.basalEnergyBurned)]
-        case .heartRate: return [HKQuantityType(.heartRate)]
-        case .restingHeartRate: return [HKQuantityType(.restingHeartRate)]
+            return [quantityType(.activeEnergyBurned), quantityType(.basalEnergyBurned)]
+        case .heartRate: return [quantityType(.heartRate)]
+        case .restingHeartRate: return [quantityType(.restingHeartRate)]
         // SDNN on iOS (Android reads RMSSD) — baseline-relative only.
-        case .heartRateVariability: return [HKQuantityType(.heartRateVariabilitySDNN)]
+        case .heartRateVariability: return [quantityType(.heartRateVariabilitySDNN)]
         case .workouts: return [HKObjectType.workoutType()]
-        case .sleep: return [HKCategoryType(.sleepAnalysis)]
+        case .sleep: return [categoryType(.sleepAnalysis)]
         }
     }
 

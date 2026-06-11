@@ -5,7 +5,10 @@ import PackageDescription
 let package = Package(
     name: "tauri-plugin-health",
     platforms: [
-        .iOS(.v15),
+        // Matches Tauri's default iOS deployment target — consumers build
+        // this package at *their* app's target, so the sources avoid all
+        // iOS-15+ conveniences (see HealthMapping's type lookups).
+        .iOS(.v13),
         // SwiftPM resolution consistency with the Tauri package's macOS
         // declaration; the target is only ever compiled into iOS builds.
         .macOS(.v12),
