@@ -7,24 +7,19 @@
 //  HKSampleQuery. HK completion handlers arrive on background queues —
 //  results are resolved directly (no main-thread hop needed for IPC).
 //
+//  Results are built as the typeshare-generated wire structs
+//  (HealthTypes.generated.swift) and resolved through Invoke's Encodable
+//  overload, so the payload shape is compiler-checked against models.rs.
+//
 
 import Foundation
 import HealthKit
 
-struct BucketResult {
-    let start: Int
-    let end: Int
-    var value: Double
-    let unit: String
-    var min: Double?
-    var max: Double?
-}
-
 final class HealthQueries {
     let store = HKHealthStore()
 
-    private static func ms(_ date: Date) -> Int {
-        Int((date.timeIntervalSince1970 * 1000).rounded())
+    private static func ms(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 
     // MARK: aggregates
@@ -32,11 +27,11 @@ final class HealthQueries {
     /// Single-quantity-type statistics collection over [start, end).
     private func statistics(
         type: HKQuantityType,
-        metric: HealthMetric,
+        metric: Metric,
         start: Date,
         end: Date,
         hourly: Bool,
-        completion: @escaping (Result<[BucketResult], Error>) -> Void
+        completion: @escaping (Result<[AggregatedBucket], Error>) -> Void
     ) {
         let calendar = Calendar.current
         let anchor = calendar.startOfDay(for: start)
@@ -61,12 +56,12 @@ final class HealthQueries {
                 completion(.failure(error))
                 return
             }
-            var buckets: [BucketResult] = []
+            var buckets: [AggregatedBucket] = []
             collection?.enumerateStatistics(from: start, to: end) { stats, _ in
                 if metric.isDiscrete {
                     guard let avg = stats.averageQuantity() else { return }
                     buckets.append(
-                        BucketResult(
+                        AggregatedBucket(
                             start: Self.ms(stats.startDate), end: Self.ms(stats.endDate),
                             value: avg.doubleValue(for: unit), unit: unitName,
                             min: stats.minimumQuantity()?.doubleValue(for: unit),
@@ -74,7 +69,7 @@ final class HealthQueries {
                 } else {
                     let sum = stats.sumQuantity()?.doubleValue(for: unit) ?? 0
                     buckets.append(
-                        BucketResult(
+                        AggregatedBucket(
                             start: Self.ms(stats.startDate), end: Self.ms(stats.endDate),
                             value: sum, unit: unitName, min: nil, max: nil))
                 }
@@ -85,17 +80,17 @@ final class HealthQueries {
     }
 
     func aggregate(
-        metric: HealthMetric,
+        metric: Metric,
         start: Date,
         end: Date,
         hourly: Bool,
-        completion: @escaping (Result<[BucketResult], Error>) -> Void
+        completion: @escaping (Result<[AggregatedBucket], Error>) -> Void
     ) {
         if metric == .totalCalories {
             // active + basal summed per bucket.
             let group = DispatchGroup()
-            var active: [BucketResult] = []
-            var basal: [BucketResult] = []
+            var active: [AggregatedBucket] = []
+            var basal: [AggregatedBucket] = []
             var firstError: Error?
 
             group.enter()
@@ -126,12 +121,14 @@ final class HealthQueries {
                     return
                 }
                 // Buckets share the same anchor/interval → merge by start time.
-                var byStart: [Int: BucketResult] = [:]
+                var byStart: [Int64: AggregatedBucket] = [:]
                 for bucket in active { byStart[bucket.start] = bucket }
                 for bucket in basal {
-                    if var existing = byStart[bucket.start] {
-                        existing.value += bucket.value
-                        byStart[bucket.start] = existing
+                    if let existing = byStart[bucket.start] {
+                        byStart[bucket.start] = AggregatedBucket(
+                            start: existing.start, end: existing.end,
+                            value: existing.value + bucket.value,
+                            unit: existing.unit, min: nil, max: nil)
                     } else {
                         byStart[bucket.start] = bucket
                     }
@@ -152,23 +149,11 @@ final class HealthQueries {
 
     // MARK: sleep
 
-    struct SleepStageEntry {
-        let stage: String
-        let start: Int
-        let end: Int
-    }
-    struct SleepSessionResult {
-        let start: Int
-        let end: Int
-        let source: String?
-        let stages: [SleepStageEntry]
-    }
-
     /// HealthKit has no sleep-session object: samples are grouped per
     /// source and split into sessions on gaps > 60 minutes.
     func sleepSessions(
         start: Date, end: Date,
-        completion: @escaping (Result<[SleepSessionResult], Error>) -> Void
+        completion: @escaping (Result<[SleepSession], Error>) -> Void
     ) {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
@@ -188,7 +173,7 @@ final class HealthQueries {
                 bySource[sample.sourceRevision.source.bundleIdentifier, default: []].append(sample)
             }
 
-            var sessions: [SleepSessionResult] = []
+            var sessions: [SleepSession] = []
             let maxGap: TimeInterval = 60 * 60
             for (_, sourceSamples) in bySource {
                 var current: [HKCategorySample] = []
@@ -196,12 +181,12 @@ final class HealthQueries {
                     guard let first = current.first, let last = current.max(by: { $0.endDate < $1.endDate })
                     else { return }
                     sessions.append(
-                        SleepSessionResult(
+                        SleepSession(
                             start: Self.ms(first.startDate),
                             end: Self.ms(last.endDate),
                             source: first.sourceRevision.source.name,
                             stages: current.map {
-                                SleepStageEntry(
+                                SleepStageSample(
                                     stage: HealthMapping.sleepStage(fromRawValue: $0.value),
                                     start: Self.ms($0.startDate),
                                     end: Self.ms($0.endDate))
@@ -225,20 +210,9 @@ final class HealthQueries {
 
     // MARK: workouts
 
-    struct WorkoutResult {
-        let start: Int
-        let end: Int
-        let activityType: String
-        let rawActivityType: Int
-        let durationSec: Double
-        let calories: Double?
-        let distanceMeters: Double?
-        let source: String?
-    }
-
     func workouts(
         start: Date, end: Date,
-        completion: @escaping (Result<[WorkoutResult], Error>) -> Void
+        completion: @escaping (Result<[Workout], Error>) -> Void
     ) {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
@@ -253,7 +227,7 @@ final class HealthQueries {
                 return
             }
             let workouts = (samples as? [HKWorkout]) ?? []
-            let results = workouts.map { workout -> WorkoutResult in
+            let results = workouts.map { workout -> Workout in
                 var calories: Double?
                 if #available(iOS 16.0, *) {
                     calories = workout.statistics(for: quantityType(.activeEnergyBurned))?
@@ -261,12 +235,12 @@ final class HealthQueries {
                 } else {
                     calories = workout.totalEnergyBurned?.doubleValue(for: .kilocalorie())
                 }
-                return WorkoutResult(
+                return Workout(
                     start: Self.ms(workout.startDate),
                     end: Self.ms(workout.endDate),
                     activityType: HealthMapping.activityName(
                         fromHKRawValue: workout.workoutActivityType.rawValue),
-                    rawActivityType: Int(workout.workoutActivityType.rawValue),
+                    rawActivityType: Int64(workout.workoutActivityType.rawValue),
                     durationSec: workout.duration,
                     calories: calories,
                     distanceMeters: workout.totalDistance?.doubleValue(for: .meter()),
@@ -279,15 +253,9 @@ final class HealthQueries {
 
     // MARK: heart-rate samples
 
-    struct HeartRateSampleResult {
-        let timestamp: Int
-        let bpm: Double
-        let source: String?
-    }
-
     func heartRateSamples(
         start: Date, end: Date, limit: Int,
-        completion: @escaping (Result<[HeartRateSampleResult], Error>) -> Void
+        completion: @escaping (Result<[HeartRateSample], Error>) -> Void
     ) {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
         // Newest first so `limit` keeps the most recent; reversed below.
@@ -305,7 +273,7 @@ final class HealthQueries {
             }
             let quantitySamples = (samples as? [HKQuantitySample]) ?? []
             let results = quantitySamples.map {
-                HeartRateSampleResult(
+                HeartRateSample(
                     timestamp: Self.ms($0.startDate),
                     bpm: $0.quantity.doubleValue(for: bpmUnit),
                     source: $0.sourceRevision.source.name)

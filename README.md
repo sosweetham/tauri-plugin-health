@@ -160,6 +160,33 @@ variability `ms`.
   cross-platform. Android HRV aggregates are computed by the plugin from
   raw records (Health Connect has no HRV aggregate).
 
+## Wire types are generated — single source of truth
+
+Every type that crosses a language boundary (TypeScript ⇄ Rust ⇄
+Kotlin/Swift) is defined once, in `src/models.rs`, and generated into the
+other three languages with [typeshare]:
+
+| Output | Consumed by |
+| --- | --- |
+| `guest-js/bindings.ts` | the published JS API (`guest-js/index.ts` re-exports it) |
+| `ios/Sources/HealthTypes.generated.swift` | Swift plugin (`Codable`, resolved via Tauri's `Encodable` overload) |
+| `android/src/main/java/HealthTypes.generated.kt` | Kotlin plugin (serialized through `WireJson`, which maps the generated enums' wire names onto Tauri's Jackson bridge) |
+
+To change or add a wire type:
+
+```bash
+cargo install typeshare-cli   # once (or brew install typeshare)
+# edit src/models.rs, then:
+pnpm generate-types
+```
+
+Never edit the generated files by hand. Vocabulary fields are real enums
+(`Metric`, `SleepStage`, `ActivityType`, `HealthUnit`, …), so adding a
+variant in `models.rs` surfaces as a compile error in the Kotlin/Swift
+`when`/`switch` mappings until both platforms handle it.
+
+[typeshare]: https://github.com/1Password/typeshare
+
 ## Example app
 
 `examples/tauri-app` — Svelte 5 demo with availability banner, permission

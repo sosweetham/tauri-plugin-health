@@ -33,6 +33,9 @@ links = "tauri-plugin-health"
 tauri = { version = "2.10" }
 serde = "1.0"
 thiserror = "2"
+# Annotation-only crate; the generators live in typeshare-cli (see
+# `pnpm generate-types`).
+typeshare = "1.0"
 
 [build-dependencies]
 tauri-plugin = { version = "2.5", features = ["build"] }

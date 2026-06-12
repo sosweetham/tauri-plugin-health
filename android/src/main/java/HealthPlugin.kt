@@ -3,6 +3,10 @@
 // coroutine. The permission flow goes through Health Connect's
 // ActivityResultContract via Tauri's startActivityForResult, and re-queries
 // getGrantedPermissions() on return rather than parsing the result intent.
+//
+// Args and responses use the typeshare-generated wire types
+// (HealthTypes.generated.kt), parsed/serialized through WireJson so the
+// payload shape is compiler-checked against models.rs.
 
 package app.tauri.health
 
@@ -11,6 +15,7 @@ import android.content.Intent
 import androidx.activity.result.ActivityResult
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.aggregate.AggregationResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
@@ -27,10 +32,8 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
-import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
-import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import kotlinx.coroutines.CoroutineScope
@@ -43,30 +46,9 @@ import java.time.LocalDateTime
 import java.time.Period
 import java.time.ZoneId
 
-@InvokeArg
-class RequestPermissionsArgs {
-    lateinit var read: List<String>
-}
-
-@InvokeArg
-class QueryAggregatedArgs {
-    lateinit var metric: String
-    var start: Long = 0
-    var end: Long = 0
-    lateinit var bucket: String
-}
-
-@InvokeArg
-class QueryRangeArgs {
-    var start: Long = 0
-    var end: Long = 0
-}
-
-@InvokeArg
-class QueryHeartRateSamplesArgs {
-    var start: Long = 0
-    var end: Long = 0
-    var limit: Int? = null
+/** Resolves with a typeshare wire type serialized through WireJson. */
+private fun Invoke.resolveWire(value: Any) {
+    resolve(JSObject(WireJson.stringify(value)))
 }
 
 @TauriPlugin
@@ -80,36 +62,38 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
             null
         }
 
-    private var pendingPermissionMetrics: List<String> = emptyList()
+    private var pendingPermissionMetrics: List<Metric> = emptyList()
 
     @Command
     fun isAvailable(invoke: Invoke) {
         val status = HealthConnectClient.getSdkStatus(activity)
-        invoke.resolve(JSObject().apply {
-            put("available", status == HealthConnectClient.SDK_AVAILABLE)
-            put("platform", "android")
-            when (status) {
-                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ->
-                    put("reason", "providerUpdateRequired")
-                HealthConnectClient.SDK_UNAVAILABLE ->
-                    put("reason", "providerUnavailable")
-            }
-        })
+        invoke.resolveWire(
+            Availability(
+                available = status == HealthConnectClient.SDK_AVAILABLE,
+                platform = HealthPlatform.Android,
+                reason = when (status) {
+                    HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ->
+                        AvailabilityReason.ProviderUpdateRequired
+                    HealthConnectClient.SDK_UNAVAILABLE -> AvailabilityReason.ProviderUnavailable
+                    else -> null
+                },
+            ),
+        )
     }
 
     @Command
     override fun requestPermissions(invoke: Invoke) {
-        val args = invoke.parseArgs(RequestPermissionsArgs::class.java)
+        val args = WireJson.parse<RequestPermissionsOptions>(invoke.getRawArgs())
         if (client == null) {
             invoke.reject("Health Connect is not available on this device")
             return
         }
-        pendingPermissionMetrics = args.read
-        val permissions = args.read.mapNotNull { HealthMapping.readPermission(it) }.toSet()
-        if (permissions.isEmpty()) {
-            invoke.reject("no known metrics in request")
+        if (args.read.isEmpty()) {
+            invoke.reject("no metrics in request")
             return
         }
+        pendingPermissionMetrics = args.read
+        val permissions = args.read.map { HealthMapping.readPermission(it) }.toSet()
         val contract = PermissionController.createRequestPermissionResultContract()
         val intent: Intent = contract.createIntent(activity, permissions)
         startActivityForResult(invoke, intent, "onHealthPermissionResult")
@@ -126,7 +110,7 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                 val metrics = pendingPermissionMetrics.filter {
                     HealthMapping.readPermission(it) in granted
                 }
-                invoke.resolve(grantResponse(metrics))
+                invoke.resolveWire(PermissionsResponse(metrics, PermissionAccuracy.Exact))
             } catch (e: Exception) {
                 invoke.reject(e.message ?: "permission check failed")
             }
@@ -142,24 +126,19 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
         scope.launch {
             try {
                 val granted = healthClient.permissionController.getGrantedPermissions()
-                val metrics = HealthMapping.RECORD_TYPES.keys.filter {
+                val metrics = Metric.values().filter {
                     HealthMapping.readPermission(it) in granted
                 }
-                invoke.resolve(grantResponse(metrics))
+                invoke.resolveWire(PermissionsResponse(metrics, PermissionAccuracy.Exact))
             } catch (e: Exception) {
                 invoke.reject(e.message ?: "permission check failed")
             }
         }
     }
 
-    private fun grantResponse(metrics: List<String>): JSObject = JSObject().apply {
-        put("granted", JSArray(metrics))
-        put("state", "exact")
-    }
-
     @Command
     fun queryAggregated(invoke: Invoke) {
-        val args = invoke.parseArgs(QueryAggregatedArgs::class.java)
+        val args = WireJson.parse<QueryAggregatedOptions>(invoke.getRawArgs())
         val healthClient = client ?: run {
             invoke.reject("Health Connect is not available on this device")
             return
@@ -167,19 +146,19 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
         scope.launch {
             try {
                 val unit = HealthMapping.unit(args.metric)
-                val buckets = JSArray()
+                val buckets = mutableListOf<AggregatedBucket>()
                 val zone = ZoneId.systemDefault()
 
                 // Health Connect has no HRV aggregate — read the raw RMSSD
                 // records and bucket them here with the same semantics.
-                if (args.metric == "heartRateVariability") {
-                    invoke.resolve(JSObject().apply {
-                        put("buckets", aggregateHrvManually(healthClient, args, zone))
-                    })
+                if (args.metric == Metric.HeartRateVariability) {
+                    invoke.resolveWire(
+                        QueryAggregatedResponse(aggregateHrvManually(healthClient, args, zone)),
+                    )
                     return@launch
                 }
 
-                if (args.bucket == "day") {
+                if (args.bucket == Bucket.Day) {
                     val timeRange = TimeRangeFilter.between(
                         LocalDateTime.ofInstant(Instant.ofEpochMilli(args.start), zone),
                         LocalDateTime.ofInstant(Instant.ofEpochMilli(args.end), zone),
@@ -192,11 +171,11 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                         ),
                     )
                     for (row in rows) {
-                        bucketJson(args.metric, unit, row.result)?.let { json ->
-                            json.put("start", row.startTime.atZone(zone).toInstant().toEpochMilli())
-                            json.put("end", row.endTime.atZone(zone).toInstant().toEpochMilli())
-                            buckets.put(json)
-                        }
+                        bucketFor(
+                            args.metric, unit, row.result,
+                            start = row.startTime.atZone(zone).toInstant().toEpochMilli(),
+                            end = row.endTime.atZone(zone).toInstant().toEpochMilli(),
+                        )?.let { buckets.add(it) }
                     }
                 } else {
                     val timeRange = TimeRangeFilter.between(
@@ -211,14 +190,14 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                         ),
                     )
                     for (row in rows) {
-                        bucketJson(args.metric, unit, row.result)?.let { json ->
-                            json.put("start", row.startTime.toEpochMilli())
-                            json.put("end", row.endTime.toEpochMilli())
-                            buckets.put(json)
-                        }
+                        bucketFor(
+                            args.metric, unit, row.result,
+                            start = row.startTime.toEpochMilli(),
+                            end = row.endTime.toEpochMilli(),
+                        )?.let { buckets.add(it) }
                     }
                 }
-                invoke.resolve(JSObject().apply { put("buckets", buckets) })
+                invoke.resolveWire(QueryAggregatedResponse(buckets))
             } catch (e: SecurityException) {
                 invoke.reject("permission not granted: ${e.message}")
             } catch (e: Exception) {
@@ -227,18 +206,25 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    private fun aggregateMetricsFor(metric: String) = when (metric) {
-        "steps" -> setOf(StepsRecord.COUNT_TOTAL)
-        "distance" -> setOf(DistanceRecord.DISTANCE_TOTAL)
-        "activeCalories" -> setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
-        "totalCalories" -> setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
-        "heartRate" -> setOf(HeartRateRecord.BPM_AVG, HeartRateRecord.BPM_MIN, HeartRateRecord.BPM_MAX)
-        "restingHeartRate" -> setOf(
+    private fun aggregateMetricsFor(metric: Metric) = when (metric) {
+        Metric.Steps -> setOf(StepsRecord.COUNT_TOTAL)
+        Metric.Distance -> setOf(DistanceRecord.DISTANCE_TOTAL)
+        Metric.ActiveCalories -> setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
+        Metric.TotalCalories -> setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
+        Metric.HeartRate -> setOf(
+            HeartRateRecord.BPM_AVG,
+            HeartRateRecord.BPM_MIN,
+            HeartRateRecord.BPM_MAX,
+        )
+        Metric.RestingHeartRate -> setOf(
             RestingHeartRateRecord.BPM_AVG,
             RestingHeartRateRecord.BPM_MIN,
             RestingHeartRateRecord.BPM_MAX,
         )
-        else -> throw IllegalArgumentException("unknown metric: $metric")
+        // HRV is bucketed manually above; workouts/sleep are rejected by
+        // the Rust command before they reach the bridge.
+        Metric.HeartRateVariability, Metric.Workouts, Metric.Sleep ->
+            throw IllegalArgumentException("not an aggregatable metric: ${metric.string}")
     }
 
     /**
@@ -250,9 +236,9 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private suspend fun aggregateHrvManually(
         healthClient: HealthConnectClient,
-        args: QueryAggregatedArgs,
+        args: QueryAggregatedOptions,
         zone: ZoneId,
-    ): JSArray {
+    ): List<AggregatedBucket> {
         val values = mutableListOf<Pair<Long, Double>>() // (epoch ms, ms)
         var pageToken: String? = null
         do {
@@ -275,7 +261,7 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
 
         // Bucket bounds as [startMs, endMs) pairs.
         val bounds = mutableListOf<Pair<Long, Long>>()
-        if (args.bucket == "day") {
+        if (args.bucket == Bucket.Day) {
             var cursor = LocalDateTime.ofInstant(Instant.ofEpochMilli(args.start), zone)
                 .toLocalDate().atStartOfDay(zone)
             val endInstant = Instant.ofEpochMilli(args.end)
@@ -293,7 +279,7 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
             }
         }
 
-        val buckets = JSArray()
+        val buckets = mutableListOf<AggregatedBucket>()
         var i = 0
         for ((startMs, endMs) in bounds) {
             var sum = 0.0
@@ -311,71 +297,81 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                 i++
             }
             if (count == 0) continue
-            buckets.put(JSObject().apply {
-                put("start", startMs)
-                put("end", endMs)
-                put("value", sum / count)
-                put("unit", "ms")
-                put("min", min)
-                put("max", max)
-            })
+            buckets.add(
+                AggregatedBucket(
+                    start = startMs,
+                    end = endMs,
+                    value = sum / count,
+                    unit = HealthUnit.Ms,
+                    min = min,
+                    max = max,
+                ),
+            )
         }
         return buckets
     }
 
-    /** Builds the value part of a bucket; null when the bucket is empty. */
-    private fun bucketJson(
-        metric: String,
-        unit: String,
-        result: androidx.health.connect.client.aggregate.AggregationResult,
-    ): JSObject? {
-        val json = JSObject().apply { put("unit", unit) }
-        when (metric) {
-            "steps" -> {
-                val value = result[StepsRecord.COUNT_TOTAL] ?: 0L
-                json.put("value", value.toDouble())
-            }
-            "distance" -> {
-                val value = result[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0
-                json.put("value", value)
-            }
-            "activeCalories" -> {
-                val value =
-                    result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
-                json.put("value", value)
-            }
-            "totalCalories" -> {
-                val value = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0
-                json.put("value", value)
-            }
-            "heartRate" -> {
-                // Skip empty buckets for discrete metrics.
-                val avg = result[HeartRateRecord.BPM_AVG] ?: return null
-                json.put("value", avg.toDouble())
-                result[HeartRateRecord.BPM_MIN]?.let { json.put("min", it.toDouble()) }
-                result[HeartRateRecord.BPM_MAX]?.let { json.put("max", it.toDouble()) }
-            }
-            "restingHeartRate" -> {
-                val avg = result[RestingHeartRateRecord.BPM_AVG] ?: return null
-                json.put("value", avg.toDouble())
-                result[RestingHeartRateRecord.BPM_MIN]?.let { json.put("min", it.toDouble()) }
-                result[RestingHeartRateRecord.BPM_MAX]?.let { json.put("max", it.toDouble()) }
-            }
-            else -> return null
+    /** Builds one bucket; null when the bucket is empty. */
+    private fun bucketFor(
+        metric: Metric,
+        unit: HealthUnit,
+        result: AggregationResult,
+        start: Long,
+        end: Long,
+    ): AggregatedBucket? = when (metric) {
+        Metric.Steps -> AggregatedBucket(
+            start, end,
+            value = (result[StepsRecord.COUNT_TOTAL] ?: 0L).toDouble(),
+            unit = unit,
+        )
+        Metric.Distance -> AggregatedBucket(
+            start, end,
+            value = result[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0,
+            unit = unit,
+        )
+        Metric.ActiveCalories -> AggregatedBucket(
+            start, end,
+            value = result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                ?: 0.0,
+            unit = unit,
+        )
+        Metric.TotalCalories -> AggregatedBucket(
+            start, end,
+            value = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
+            unit = unit,
+        )
+        // Skip empty buckets for discrete metrics.
+        Metric.HeartRate -> result[HeartRateRecord.BPM_AVG]?.let { avg ->
+            AggregatedBucket(
+                start, end,
+                value = avg.toDouble(),
+                unit = unit,
+                min = result[HeartRateRecord.BPM_MIN]?.toDouble(),
+                max = result[HeartRateRecord.BPM_MAX]?.toDouble(),
+            )
         }
-        return json
+        Metric.RestingHeartRate -> result[RestingHeartRateRecord.BPM_AVG]?.let { avg ->
+            AggregatedBucket(
+                start, end,
+                value = avg.toDouble(),
+                unit = unit,
+                min = result[RestingHeartRateRecord.BPM_MIN]?.toDouble(),
+                max = result[RestingHeartRateRecord.BPM_MAX]?.toDouble(),
+            )
+        }
+        Metric.HeartRateVariability, Metric.Workouts, Metric.Sleep -> null
     }
 
     @Command
     fun querySleep(invoke: Invoke) {
-        val args = invoke.parseArgs(QueryRangeArgs::class.java)
+        val args = WireJson.parse<QueryRangeOptions>(invoke.getRawArgs())
         val healthClient = client ?: run {
             invoke.reject("Health Connect is not available on this device")
             return
         }
         scope.launch {
             try {
-                val sessions = JSArray()
+                val sessions = mutableListOf<SleepSession>()
                 var pageToken: String? = null
                 do {
                     val response = healthClient.readRecords(
@@ -389,24 +385,24 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                         ),
                     )
                     for (record in response.records) {
-                        val stages = JSArray()
-                        for (stage in record.stages) {
-                            stages.put(JSObject().apply {
-                                put("stage", HealthMapping.sleepStageName(stage.stage))
-                                put("start", stage.startTime.toEpochMilli())
-                                put("end", stage.endTime.toEpochMilli())
-                            })
-                        }
-                        sessions.put(JSObject().apply {
-                            put("start", record.startTime.toEpochMilli())
-                            put("end", record.endTime.toEpochMilli())
-                            put("source", record.metadata.dataOrigin.packageName)
-                            put("stages", stages)
-                        })
+                        sessions.add(
+                            SleepSession(
+                                start = record.startTime.toEpochMilli(),
+                                end = record.endTime.toEpochMilli(),
+                                source = record.metadata.dataOrigin.packageName,
+                                stages = record.stages.map { stage ->
+                                    SleepStageSample(
+                                        stage = HealthMapping.sleepStage(stage.stage),
+                                        start = stage.startTime.toEpochMilli(),
+                                        end = stage.endTime.toEpochMilli(),
+                                    )
+                                },
+                            ),
+                        )
                     }
                     pageToken = response.pageToken
                 } while (pageToken != null)
-                invoke.resolve(JSObject().apply { put("sessions", sessions) })
+                invoke.resolveWire(QuerySleepResponse(sessions))
             } catch (e: SecurityException) {
                 invoke.reject("permission not granted: ${e.message}")
             } catch (e: Exception) {
@@ -417,16 +413,15 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun queryWorkouts(invoke: Invoke) {
-        val args = invoke.parseArgs(QueryRangeArgs::class.java)
+        val args = WireJson.parse<QueryRangeOptions>(invoke.getRawArgs())
         val healthClient = client ?: run {
             invoke.reject("Health Connect is not available on this device")
             return
         }
         scope.launch {
             try {
-                val workouts = JSArray()
+                val workouts = mutableListOf<Workout>()
                 var pageToken: String? = null
-                var count = 0
                 // Calories/distance need a per-session aggregate (N+1); cap
                 // the enriched session count to bound the cost.
                 val maxSessions = 100
@@ -442,19 +437,16 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                         ),
                     )
                     for (record in response.records) {
-                        if (count >= maxSessions) break@outer
-                        count++
-                        val json = JSObject().apply {
-                            put("start", record.startTime.toEpochMilli())
-                            put("end", record.endTime.toEpochMilli())
-                            put("activityType", HealthMapping.exerciseName(record.exerciseType))
-                            put("rawActivityType", record.exerciseType)
-                            put(
-                                "durationSec",
-                                Duration.between(record.startTime, record.endTime).seconds.toDouble(),
-                            )
-                            put("source", record.metadata.dataOrigin.packageName)
-                        }
+                        if (workouts.size >= maxSessions) break@outer
+                        var workout = Workout(
+                            start = record.startTime.toEpochMilli(),
+                            end = record.endTime.toEpochMilli(),
+                            activityType = HealthMapping.exerciseType(record.exerciseType),
+                            rawActivityType = record.exerciseType.toLong(),
+                            durationSec = Duration.between(record.startTime, record.endTime)
+                                .seconds.toDouble(),
+                            source = record.metadata.dataOrigin.packageName,
+                        )
                         try {
                             val aggregate = healthClient.aggregate(
                                 AggregateRequest(
@@ -468,18 +460,19 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                                     ),
                                 ),
                             )
-                            aggregate[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
-                                ?.let { json.put("calories", it.inKilocalories) }
-                            aggregate[DistanceRecord.DISTANCE_TOTAL]
-                                ?.let { json.put("distanceMeters", it.inMeters) }
+                            workout = workout.copy(
+                                calories = aggregate[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
+                                    ?.inKilocalories,
+                                distanceMeters = aggregate[DistanceRecord.DISTANCE_TOTAL]?.inMeters,
+                            )
                         } catch (_: Exception) {
                             // Enrichment is best-effort (may lack permissions).
                         }
-                        workouts.put(json)
+                        workouts.add(workout)
                     }
                     pageToken = response.pageToken
                 } while (pageToken != null)
-                invoke.resolve(JSObject().apply { put("workouts", workouts) })
+                invoke.resolveWire(QueryWorkoutsResponse(workouts))
             } catch (e: SecurityException) {
                 invoke.reject("permission not granted: ${e.message}")
             } catch (e: Exception) {
@@ -490,7 +483,7 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun queryHeartRateSamples(invoke: Invoke) {
-        val args = invoke.parseArgs(QueryHeartRateSamplesArgs::class.java)
+        val args = WireJson.parse<QueryHeartRateSamplesOptions>(invoke.getRawArgs())
         val healthClient = client ?: run {
             invoke.reject("Health Connect is not available on this device")
             return
@@ -523,17 +516,12 @@ class HealthPlugin(private val activity: Activity) : Plugin(activity) {
                 } while (pageToken != null)
 
                 all.sortBy { it.first }
-                val limit = args.limit ?: 1000
+                val limit = args.limit?.toInt() ?: 1000
                 val kept = if (all.size > limit) all.takeLast(limit) else all
-                val samples = JSArray()
-                for ((ts, bpm) in kept) {
-                    samples.put(JSObject().apply {
-                        put("timestamp", ts)
-                        put("bpm", bpm)
-                        sources[ts]?.let { put("source", it) }
-                    })
+                val samples = kept.map { (ts, bpm) ->
+                    HeartRateSample(timestamp = ts, bpm = bpm, source = sources[ts])
                 }
-                invoke.resolve(JSObject().apply { put("samples", samples) })
+                invoke.resolveWire(QueryHeartRateSamplesResponse(samples))
             } catch (e: SecurityException) {
                 invoke.reject("permission not granted: ${e.message}")
             } catch (e: Exception) {

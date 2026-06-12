@@ -1,7 +1,7 @@
 {
   "name": "tauri-plugin-health-api",
   "version": "0.1.0",
-  "description": "Read activity, sleep, heart-rate and workout data in Tauri 2 apps — Apple HealthKit on iOS, Health Connect on Android.",
+  "description": "Read activity, sleep, heart-rate and workout data in Tauri 2 apps \u2014 Apple HealthKit on iOS, Health Connect on Android.",
   "license": "MIT",
   "author": "SoSweetHam <sosweetham@gmail.com>",
   "type": "module",
@@ -39,7 +39,8 @@
     "build": "rollup -c",
     "check-types": "tsc --noEmit",
     "prepack": "pnpm build",
-    "prepare": "pnpm build"
+    "prepare": "pnpm build",
+    "generate-types": "typeshare . --lang=typescript --output-file=guest-js/bindings.ts && typeshare . --lang=swift --output-file=ios/Sources/HealthTypes.generated.swift && typeshare . --lang=kotlin --output-file=android/src/main/java/HealthTypes.generated.kt"
   },
   "dependencies": {
     "@tauri-apps/api": ">=2.0.0"
