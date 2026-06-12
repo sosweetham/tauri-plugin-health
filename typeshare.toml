@@ -1,0 +1,7 @@
+# Config for generating the TypeScript / Swift / Kotlin copies of the wire
+# types in src/models.rs. Run `pnpm generate-types` after editing models.rs.
+
+[kotlin]
+package = "app.tauri.health"
+
+[swift]

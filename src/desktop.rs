@@ -24,7 +24,7 @@ impl<R: Runtime> Health<R> {
         Ok(Availability {
             available: false,
             platform: HealthPlatform::Unsupported,
-            reason: Some(UNSUPPORTED.into()),
+            reason: Some(AvailabilityReason::UnsupportedPlatform),
         })
     }
 

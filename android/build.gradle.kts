@@ -44,4 +44,12 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0")
     // All connect-client APIs are suspend functions.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // Annotations only (@Serializable/@SerialName on the typeshare-generated
+    // types) — no kotlinx runtime or compiler plugin; WireJson serializes
+    // with Jackson, matching Tauri's bridge. Version matches the
+    // jackson-databind tauri-android ships.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.3")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.3")
+
+    testImplementation("junit:junit:4.13.2")
 }

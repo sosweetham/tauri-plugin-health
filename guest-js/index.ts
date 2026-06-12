@@ -1,120 +1,27 @@
 import { invoke } from '@tauri-apps/api/core';
+import type {
+  Availability,
+  Bucket,
+  Metric,
+  PermissionsResponse,
+  QueryAggregatedResponse,
+  QueryHeartRateSamplesResponse,
+  QuerySleepResponse,
+  QueryWorkoutsResponse,
+} from './bindings';
 
-/**
- * A readable health metric.
- *
- * `heartRateVariability` is method-specific per platform — SDNN on iOS,
- * RMSSD on Android (both in ms). The two are NOT comparable; only compare
- * HRV against the same user's own baseline on the same device.
- */
-export type Metric =
-  | 'steps'
-  | 'distance'
-  | 'activeCalories'
-  | 'totalCalories'
-  | 'heartRate'
-  | 'restingHeartRate'
-  | 'heartRateVariability'
-  | 'workouts'
-  | 'sleep';
+// All wire types are generated from the plugin's src/models.rs by typeshare
+// (`pnpm generate-types`) — edit the Rust types, not bindings.ts.
+export * from './bindings';
 
 /** Metrics usable with {@link queryAggregated}. */
-export type AggregatableMetric = Exclude<Metric, 'workouts' | 'sleep'>;
+export type AggregatableMetric = Exclude<Metric, Metric.Workouts | Metric.Sleep>;
 
-/** Bucket size for aggregated queries (device-local calendar alignment). */
-export type Bucket = 'day' | 'hour';
-
-export type SleepStage =
-  | 'awake'
-  | 'light'
-  | 'deep'
-  | 'rem'
-  | 'inBed'
-  /** Platform reported sleep without a stage. */
-  | 'asleep'
-  | 'outOfBed'
-  | 'unknown';
-
-export interface Availability {
-  available: boolean;
-  platform: 'ios' | 'android' | 'unsupported';
-  /**
-   * Android: `providerUpdateRequired` (Health Connect app needs an update —
-   * offer {@link openSettings}) or `providerUnavailable` (device has no
-   * Health Connect). iOS: `healthDataUnavailable` (e.g. old iPads).
-   */
-  reason?: string;
-}
-
-export interface PermissionsResponse {
-  granted: Metric[];
-  /**
-   * `exact` on Android — the real grant set from Health Connect.
-   * `unknown` on iOS — HealthKit hides read denials by design; `granted`
-   * echoes the requested metrics and denied ones silently return empty
-   * data. Treat "no data" as possibly-denied and surface
-   * {@link openSettings}.
-   */
-  state: 'exact' | 'unknown';
-}
-
-export interface AggregatedBucket {
-  /** Epoch ms, device-local bucket bounds. */
-  start: number;
-  end: number;
-  /**
-   * steps: count; distance: meters; calories: kcal; heartRate /
-   * restingHeartRate: avg bpm; heartRateVariability: avg ms (SDNN on iOS,
-   * RMSSD on Android — baseline-relative comparisons only).
-   */
-  value: number;
-  unit: 'count' | 'm' | 'kcal' | 'bpm' | 'ms';
-  /** Heart metrics only (heartRate / restingHeartRate / heartRateVariability). */
-  min?: number;
-  max?: number;
-}
-
-export interface SleepStageSample {
-  stage: SleepStage;
-  start: number;
-  end: number;
-}
-
-export interface SleepSession {
-  start: number;
-  end: number;
-  /** Recording app/device name (iOS) or package (Android). */
-  source?: string;
-  stages: SleepStageSample[];
-}
-
-export interface Workout {
-  start: number;
-  end: number;
-  /**
-   * Mapped common name — "running", "walking", "cycling", "swimming",
-   * "strength", "hiit", "yoga", "hiking", "elliptical", "rowing",
-   * "tennis", "basketball", "soccer", "dance", "pilates", "stairs",
-   * "golf", "core", "crossTraining" — or "other".
-   */
-  activityType: string;
-  /**
-   * Platform-native enum value (HKWorkoutActivityType rawValue on iOS,
-   * ExerciseSessionRecord.EXERCISE_TYPE_* on Android) for exact needs.
-   */
-  rawActivityType: number;
-  durationSec: number;
-  /** kcal */
-  calories?: number;
-  distanceMeters?: number;
-  source?: string;
-}
-
-export interface HeartRateSample {
-  timestamp: number;
-  bpm: number;
-  source?: string;
-}
+/**
+ * Input positions accept either the generated enum member or its literal
+ * wire value (`Metric.Steps` or `'steps'`) — both serialize identically.
+ */
+type Like<T extends string> = T | `${T}`;
 
 /**
  * Reports whether health data is available on this device. Never rejects —
@@ -133,7 +40,7 @@ export async function isAvailable(): Promise<Availability> {
  * See {@link PermissionsResponse.state} for the accuracy contract.
  */
 export async function requestPermissions(options: {
-  read: Metric[];
+  read: Like<Metric>[];
 }): Promise<PermissionsResponse> {
   return await invoke('plugin:health|request_permissions', { options });
 }
@@ -154,11 +61,11 @@ export async function checkPermissions(): Promise<PermissionsResponse> {
  * semantics).
  */
 export async function queryAggregated(options: {
-  metric: AggregatableMetric;
+  metric: Like<AggregatableMetric>;
   start: number;
   end: number;
-  bucket: Bucket;
-}): Promise<{ buckets: AggregatedBucket[] }> {
+  bucket: Like<Bucket>;
+}): Promise<QueryAggregatedResponse> {
   return await invoke('plugin:health|query_aggregated', { options });
 }
 
@@ -172,7 +79,7 @@ export async function queryAggregated(options: {
 export async function querySleep(options: {
   start: number;
   end: number;
-}): Promise<{ sessions: SleepSession[] }> {
+}): Promise<QuerySleepResponse> {
   return await invoke('plugin:health|query_sleep', { options });
 }
 
@@ -180,7 +87,7 @@ export async function querySleep(options: {
 export async function queryWorkouts(options: {
   start: number;
   end: number;
-}): Promise<{ workouts: Workout[] }> {
+}): Promise<QueryWorkoutsResponse> {
   return await invoke('plugin:health|query_workouts', { options });
 }
 
@@ -192,7 +99,7 @@ export async function queryHeartRateSamples(options: {
   start: number;
   end: number;
   limit?: number;
-}): Promise<{ samples: HeartRateSample[] }> {
+}): Promise<QueryHeartRateSamplesResponse> {
   return await invoke('plugin:health|query_heart_rate_samples', { options });
 }
 
