@@ -4,6 +4,10 @@
   "description": "Read activity, sleep, heart-rate and workout data in Tauri 2 apps \u2014 Apple HealthKit on iOS, Health Connect on Android.",
   "license": "MIT",
   "author": "SoSweetHam <sosweetham@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sosweetham/tauri-plugin-health.git"
+  },
   "type": "module",
   "types": "./dist-js/index.d.ts",
   "main": "./dist-js/index.cjs",
