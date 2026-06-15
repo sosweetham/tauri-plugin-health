@@ -1,5 +1,5 @@
 <script>
-  import { queryWorkouts } from 'tauri-plugin-health-api';
+  import { queryWorkouts } from '@sosweetham/tauri-plugin-health-api';
 
   let { range } = $props();
 

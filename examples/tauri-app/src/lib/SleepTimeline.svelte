@@ -1,5 +1,5 @@
 <script>
-  import { querySleep } from 'tauri-plugin-health-api';
+  import { querySleep } from '@sosweetham/tauri-plugin-health-api';
 
   let { range } = $props();
 
