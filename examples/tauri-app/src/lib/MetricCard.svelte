@@ -1,5 +1,5 @@
 <script>
-  import { queryAggregated } from 'tauri-plugin-health-api';
+  import { queryAggregated } from '@sosweetham/tauri-plugin-health-api';
 
   let { title, metric, range } = $props();
 

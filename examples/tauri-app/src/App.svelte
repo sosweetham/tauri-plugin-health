@@ -5,7 +5,7 @@
     requestPermissions,
     checkPermissions,
     openSettings,
-  } from 'tauri-plugin-health-api';
+  } from '@sosweetham/tauri-plugin-health-api';
   import MetricCard from './lib/MetricCard.svelte';
   import SleepTimeline from './lib/SleepTimeline.svelte';
   import WorkoutsList from './lib/WorkoutsList.svelte';

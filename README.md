@@ -43,7 +43,7 @@ tauri::Builder::default()
 ```
 
 ```bash
-pnpm add tauri-plugin-health-api
+pnpm add @sosweetham/tauri-plugin-health-api
 ```
 
 ## Consumer app setup (required)
@@ -101,7 +101,7 @@ manually in the Health app (Browse → metric → Add Data).
 import {
   isAvailable, requestPermissions, queryAggregated,
   querySleep, queryWorkouts, queryHeartRateSamples, openSettings,
-} from 'tauri-plugin-health-api';
+} from '@sosweetham/tauri-plugin-health-api';
 
 const { available, platform, reason } = await isAvailable();
 
