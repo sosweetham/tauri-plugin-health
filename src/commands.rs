@@ -24,7 +24,14 @@ pub(crate) async fn check_permissions<R: Runtime>(app: AppHandle<R>) -> Result<P
     app.health().check_permissions()
 }
 
-#[cfg(feature = "activity")]
+#[cfg(any(
+    feature = "steps",
+    feature = "distance",
+    feature = "active-calories",
+    feature = "total-calories",
+    feature = "resting-heart-rate",
+    feature = "hrv"
+))]
 #[command]
 pub(crate) async fn query_aggregated<R: Runtime>(
     app: AppHandle<R>,

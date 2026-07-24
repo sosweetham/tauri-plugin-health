@@ -48,7 +48,14 @@ impl<R: Runtime> Health<R> {
             .run_mobile_plugin("checkPermissions", ())
             .map_err(Into::into)
     }
-    #[cfg(feature = "activity")]
+    #[cfg(any(
+        feature = "steps",
+        feature = "distance",
+        feature = "active-calories",
+        feature = "total-calories",
+        feature = "resting-heart-rate",
+        feature = "hrv"
+    ))]
     pub fn query_aggregated(
         &self,
         options: QueryAggregatedOptions,

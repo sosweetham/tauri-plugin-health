@@ -38,7 +38,14 @@ impl<R: Runtime> Health<R> {
     pub fn check_permissions(&self) -> crate::Result<PermissionsResponse> {
         Err(Error::Unsupported(UNSUPPORTED))
     }
-    #[cfg(feature = "activity")]
+    #[cfg(any(
+        feature = "steps",
+        feature = "distance",
+        feature = "active-calories",
+        feature = "total-calories",
+        feature = "resting-heart-rate",
+        feature = "hrv"
+    ))]
     pub fn query_aggregated(
         &self,
         _options: QueryAggregatedOptions,
