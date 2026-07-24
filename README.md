@@ -28,7 +28,14 @@ stages**.
 ```toml
 # src-tauri/Cargo.toml
 [dependencies]
+# Everything (default — all metrics):
 tauri-plugin-health = { path = "..." }
+
+# Only sleep data:
+# tauri-plugin-health = { path = "...", default-features = false, features = ["sleep"] }
+
+# Activity + heart rate, no sleep/workouts:
+# tauri-plugin-health = { path = "...", default-features = false, features = ["activity", "heart-rate"] }
 ```
 
 ```rust
@@ -86,14 +93,7 @@ manually in the Health app (Browse → metric → Add Data).
    The rationale title/body can be overridden by redefining the
    `tauri_health_rationale_title` / `tauri_health_rationale_text` string
    resources in your app.
-3. If you only use a subset of metrics, strip the unused health permissions
-   (Google Play policy requires declaring only what you use):
-   ```xml
-   <uses-permission
-     android:name="android.permission.health.READ_HEART_RATE"
-     tools:node="remove" />
-   ```
-   Production health apps also need the Play Console health declaration.
+3. The plugin automatically generates its Android manifest permissions based on the Cargo features you enable. Production health apps also need the Play Console health declaration.
 
 ## Usage
 

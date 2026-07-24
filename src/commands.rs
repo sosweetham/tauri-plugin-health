@@ -1,6 +1,7 @@
 use tauri::{command, AppHandle, Runtime};
 
 use crate::models::*;
+#[allow(unused_imports)]
 use crate::Error;
 use crate::HealthExt;
 use crate::Result;
@@ -23,6 +24,7 @@ pub(crate) async fn check_permissions<R: Runtime>(app: AppHandle<R>) -> Result<P
     app.health().check_permissions()
 }
 
+#[cfg(feature = "activity")]
 #[command]
 pub(crate) async fn query_aggregated<R: Runtime>(
     app: AppHandle<R>,
@@ -39,6 +41,7 @@ pub(crate) async fn query_aggregated<R: Runtime>(
     app.health().query_aggregated(options)
 }
 
+#[cfg(feature = "sleep")]
 #[command]
 pub(crate) async fn query_sleep<R: Runtime>(
     app: AppHandle<R>,
@@ -47,6 +50,7 @@ pub(crate) async fn query_sleep<R: Runtime>(
     app.health().query_sleep(options)
 }
 
+#[cfg(feature = "workouts")]
 #[command]
 pub(crate) async fn query_workouts<R: Runtime>(
     app: AppHandle<R>,
@@ -55,6 +59,7 @@ pub(crate) async fn query_workouts<R: Runtime>(
     app.health().query_workouts(options)
 }
 
+#[cfg(feature = "heart-rate")]
 #[command]
 pub(crate) async fn query_heart_rate_samples<R: Runtime>(
     app: AppHandle<R>,

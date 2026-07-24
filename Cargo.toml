@@ -39,3 +39,11 @@ typeshare = "1.0"
 
 [build-dependencies]
 tauri-plugin = { version = "2.5", features = ["build"] }
+
+[features]
+default = ["activity", "heart-rate", "sleep", "workouts"]
+activity = []
+heart-rate = []
+sleep = []
+workouts = []
+
