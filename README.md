@@ -34,8 +34,8 @@ tauri-plugin-health = { path = "..." }
 # Only sleep data:
 # tauri-plugin-health = { path = "...", default-features = false, features = ["sleep"] }
 
-# Activity + heart rate, no sleep/workouts:
-# tauri-plugin-health = { path = "...", default-features = false, features = ["activity", "heart-rate"] }
+# Pendi's specific combination (no distance or total calories):
+# tauri-plugin-health = { path = "...", default-features = false, features = ["steps", "active-calories", "resting-heart-rate", "hrv", "workouts", "sleep"] }
 ```
 
 ```rust

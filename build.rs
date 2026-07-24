@@ -10,8 +10,16 @@ fn main() {
         "open_settings",
     ];
 
-    #[cfg(feature = "activity")]
+    #[cfg(any(
+        feature = "steps",
+        feature = "distance",
+        feature = "active-calories",
+        feature = "total-calories",
+        feature = "resting-heart-rate",
+        feature = "hrv"
+    ))]
     commands.push("query_aggregated");
+    
     #[cfg(feature = "sleep")]
     commands.push("query_sleep");
     #[cfg(feature = "workouts")]
@@ -28,8 +36,16 @@ fn main() {
         "allow-open-settings",
     ];
 
-    #[cfg(feature = "activity")]
+    #[cfg(any(
+        feature = "steps",
+        feature = "distance",
+        feature = "active-calories",
+        feature = "total-calories",
+        feature = "resting-heart-rate",
+        feature = "hrv"
+    ))]
     perms.push("allow-query-aggregated");
+    
     #[cfg(feature = "sleep")]
     perms.push("allow-query-sleep");
     #[cfg(feature = "workouts")]
@@ -61,21 +77,30 @@ permissions = [
     #[allow(unused_mut)]
     let mut android_perms: Vec<&str> = Vec::new();
 
-    #[cfg(feature = "activity")]
-    android_perms.extend_from_slice(&[
-        "android.permission.health.READ_STEPS",
-        "android.permission.health.READ_DISTANCE",
-        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
-        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
-    ]);
+    #[cfg(feature = "steps")]
+    android_perms.push("android.permission.health.READ_STEPS");
+    
+    #[cfg(feature = "distance")]
+    android_perms.push("android.permission.health.READ_DISTANCE");
+    
+    #[cfg(feature = "active-calories")]
+    android_perms.push("android.permission.health.READ_ACTIVE_CALORIES_BURNED");
+    
+    #[cfg(feature = "total-calories")]
+    android_perms.push("android.permission.health.READ_TOTAL_CALORIES_BURNED");
+    
     #[cfg(feature = "heart-rate")]
-    android_perms.extend_from_slice(&[
-        "android.permission.health.READ_HEART_RATE",
-        "android.permission.health.READ_RESTING_HEART_RATE",
-        "android.permission.health.READ_HEART_RATE_VARIABILITY",
-    ]);
+    android_perms.push("android.permission.health.READ_HEART_RATE");
+    
+    #[cfg(feature = "resting-heart-rate")]
+    android_perms.push("android.permission.health.READ_RESTING_HEART_RATE");
+    
+    #[cfg(feature = "hrv")]
+    android_perms.push("android.permission.health.READ_HEART_RATE_VARIABILITY");
+    
     #[cfg(feature = "workouts")]
     android_perms.push("android.permission.health.READ_EXERCISE");
+    
     #[cfg(feature = "sleep")]
     android_perms.push("android.permission.health.READ_SLEEP");
 

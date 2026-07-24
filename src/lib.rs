@@ -55,7 +55,14 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::request_permissions,
             commands::check_permissions,
             commands::open_settings,
-            #[cfg(feature = "activity")]
+            #[cfg(any(
+                feature = "steps",
+                feature = "distance",
+                feature = "active-calories",
+                feature = "total-calories",
+                feature = "resting-heart-rate",
+                feature = "hrv"
+            ))]
             commands::query_aggregated,
             #[cfg(feature = "sleep")]
             commands::query_sleep,

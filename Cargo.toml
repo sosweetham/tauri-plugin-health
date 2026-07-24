@@ -41,9 +41,18 @@ typeshare = "1.0"
 tauri-plugin = { version = "2.5", features = ["build"] }
 
 [features]
-default = ["activity", "heart-rate", "sleep", "workouts"]
-activity = []
+default = [
+    "steps", "distance", "active-calories", "total-calories",
+    "heart-rate", "resting-heart-rate", "hrv",
+    "sleep", "workouts"
+]
+steps = []
+distance = []
+active-calories = []
+total-calories = []
 heart-rate = []
+resting-heart-rate = []
+hrv = []
 sleep = []
 workouts = []
 

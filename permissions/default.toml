@@ -13,5 +13,4 @@ permissions = [
   "allow-query-aggregated",
   "allow-query-sleep",
   "allow-query-workouts",
-  "allow-query-heart-rate-samples",
 ]
