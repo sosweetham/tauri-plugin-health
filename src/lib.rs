@@ -54,11 +54,15 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::is_available,
             commands::request_permissions,
             commands::check_permissions,
-            commands::query_aggregated,
-            commands::query_sleep,
-            commands::query_workouts,
-            commands::query_heart_rate_samples,
             commands::open_settings,
+            #[cfg(feature = "activity")]
+            commands::query_aggregated,
+            #[cfg(feature = "sleep")]
+            commands::query_sleep,
+            #[cfg(feature = "workouts")]
+            commands::query_workouts,
+            #[cfg(feature = "heart-rate")]
+            commands::query_heart_rate_samples,
         ])
         .setup(|app, api| {
             #[cfg(mobile)]

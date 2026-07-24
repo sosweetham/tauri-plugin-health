@@ -38,25 +38,25 @@ impl<R: Runtime> Health<R> {
     pub fn check_permissions(&self) -> crate::Result<PermissionsResponse> {
         Err(Error::Unsupported(UNSUPPORTED))
     }
-
+    #[cfg(feature = "activity")]
     pub fn query_aggregated(
         &self,
         _options: QueryAggregatedOptions,
     ) -> crate::Result<QueryAggregatedResponse> {
         Err(Error::Unsupported(UNSUPPORTED))
     }
-
+    #[cfg(feature = "sleep")]
     pub fn query_sleep(&self, _options: QueryRangeOptions) -> crate::Result<QuerySleepResponse> {
         Err(Error::Unsupported(UNSUPPORTED))
     }
-
+    #[cfg(feature = "workouts")]
     pub fn query_workouts(
         &self,
         _options: QueryRangeOptions,
     ) -> crate::Result<QueryWorkoutsResponse> {
         Err(Error::Unsupported(UNSUPPORTED))
     }
-
+    #[cfg(feature = "heart-rate")]
     pub fn query_heart_rate_samples(
         &self,
         _options: QueryHeartRateSamplesOptions,

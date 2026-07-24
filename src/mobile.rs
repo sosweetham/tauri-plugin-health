@@ -48,7 +48,7 @@ impl<R: Runtime> Health<R> {
             .run_mobile_plugin("checkPermissions", ())
             .map_err(Into::into)
     }
-
+    #[cfg(feature = "activity")]
     pub fn query_aggregated(
         &self,
         options: QueryAggregatedOptions,
@@ -57,13 +57,13 @@ impl<R: Runtime> Health<R> {
             .run_mobile_plugin("queryAggregated", options)
             .map_err(Into::into)
     }
-
+    #[cfg(feature = "sleep")]
     pub fn query_sleep(&self, options: QueryRangeOptions) -> crate::Result<QuerySleepResponse> {
         self.0
             .run_mobile_plugin("querySleep", options)
             .map_err(Into::into)
     }
-
+    #[cfg(feature = "workouts")]
     pub fn query_workouts(
         &self,
         options: QueryRangeOptions,
@@ -72,7 +72,7 @@ impl<R: Runtime> Health<R> {
             .run_mobile_plugin("queryWorkouts", options)
             .map_err(Into::into)
     }
-
+    #[cfg(feature = "heart-rate")]
     pub fn query_heart_rate_samples(
         &self,
         options: QueryHeartRateSamplesOptions,
